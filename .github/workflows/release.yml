@@ -33,8 +33,17 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
           npx vsce package --no-dependencies -o odx.vsix
-      - name: Publish to Open VSX (trusted publishing)
-        run: npx ovsx publish --packagePath odx.vsix --skip-duplicate --trusted-publishing
+      - name: Publish to Open VSX
+        # Trusted publishing, unless an OVSX_PAT secret holds an access token:
+        # Open VSX does not offer trusted publishers for every namespace yet.
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -n "$OVSX_PAT" ]; then
+            npx ovsx publish --packagePath odx.vsix --skip-duplicate
+          else
+            npx ovsx publish --packagePath odx.vsix --skip-duplicate --trusted-publishing
+          fi
       - name: Publish to the Visual Studio Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
