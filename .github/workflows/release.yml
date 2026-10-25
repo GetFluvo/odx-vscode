@@ -28,10 +28,17 @@ jobs:
         with:
           node-version: "24.21.0"
           package-manager-cache: false
-      - name: Build the .vsix
+      - name: The release tag names package.json's version
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: test "v$(node -p 'require("./package.json").version')" = "$TAG"
+      - name: Build and test the .vsix
         run: |
           npm ci --no-audit --no-fund
+          npm run typecheck
           npm run build
+          npm test
           npx vsce package --no-dependencies -o odx.vsix
       - name: Publish to Open VSX
         # Trusted publishing, unless an OVSX_PAT secret holds an access token:

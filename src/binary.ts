@@ -56,7 +56,9 @@ function newestDownloaded(storage: string): string | undefined {
   const dirs = fs.existsSync(storage)
     ? fs.readdirSync(storage).filter((name) => name.startsWith("odx-cli-"))
     : [];
-  for (const dir of dirs.sort().reverse()) {
+  const newest = (a: string, b: string) =>
+    b.localeCompare(a, undefined, { numeric: true });
+  for (const dir of dirs.sort(newest)) {
     const candidate = path.join(storage, dir, EXE);
     if (isExecutable(candidate)) {
       return candidate;
@@ -71,6 +73,10 @@ async function download(
 ): Promise<string> {
   const index = await fetchJson("https://pypi.org/pypi/odx-cli/json");
   const version: string = index.info.version;
+  // The version names a directory: nothing but a version may get there.
+  if (!/^[0-9A-Za-z.+!-]+$/.test(version)) {
+    throw new Error(`PyPI reports odx-cli version ${JSON.stringify(version)}`);
+  }
   const target = path.join(storage, `odx-cli-${version}`, EXE);
   if (isExecutable(target)) {
     return target;
@@ -91,7 +97,13 @@ async function download(
       location: vscode.ProgressLocation.Window,
       title: `odx: downloading odx ${version}`,
     },
-    async () => new Uint8Array(await (await fetch(wheel.url)).arrayBuffer()),
+    async () => {
+      const response = await fetch(wheel.url);
+      if (!response.ok) {
+        throw new Error(`${wheel.url}: HTTP ${response.status}`);
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    },
   );
   const digest = createHash("sha256").update(data).digest("hex");
   if (digest !== wheel.digests.sha256) {

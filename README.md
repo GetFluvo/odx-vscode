@@ -11,8 +11,8 @@ commands.
   state and notes. Right-click an entry for what odx can do about it:
   include a pull request, port a change, drop an override, follow an index
   update, promote an addon into the next environment, or mute it with a
-  reason. Port and promote write a branch first and offer to open its pull
-  request.
+  reason. Port asks whether to open a draft pull request as well; promote
+  writes the plan first and offers to open its pull request.
 - **Pull requests view.** What `odx status` tracks: each aggregated or pinned
   pull request, its state upstream and its new commits, linked to the forge.
 - **Status bar.** How many entries there are to act on; a click opens the
@@ -37,14 +37,15 @@ SHA-256), unless `odx.download` is off. Install it yourself with
 
 ## Settings
 
-| Setting | Default | |
-| --- | --- | --- |
-| `odx.path` | | The `odx` executable to run |
-| `odx.download` | `true` | Download `odx` from PyPI when it is not installed |
-| `odx.offline` | `false` | Build the dashboard from cached forge and index data only |
+| Setting        | Default |                                                           |
+| -------------- | ------- | --------------------------------------------------------- |
+| `odx.path`     |         | The `odx` executable to run                               |
+| `odx.download` | `true`  | Download `odx` from PyPI when it is not installed         |
+| `odx.offline`  | `false` | Build the dashboard from cached forge and index data only |
 
-The views fill in a workspace whose `pyproject.toml` has a `[tool.odx]`
-table, or that has a `repos.yaml`.
+The views fill in a workspace whose `pyproject.toml`, there or in a
+directory above, has a `[tool.odx]` table. The extension needs a trusted
+workspace: it runs the odx executable, which the workspace can select.
 
 ## Development
 

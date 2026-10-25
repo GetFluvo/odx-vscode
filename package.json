@@ -2,7 +2,7 @@
   "name": "odx",
   "displayName": "odx",
   "description": "Odoo workspaces with odx: the dashboard of pinned pull requests, upstream changes, ports and drift, and the main odx commands",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "getfluvo",
   "license": "MIT",
   "icon": "icon.png",
@@ -26,9 +26,15 @@
   },
   "activationEvents": [
     "workspaceContains:odx.lock",
-    "workspaceContains:repos.yaml",
     "workspaceContains:pyproject.toml"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "The extension runs the odx executable, which a workspace can select (`odx.path`, `.venv`)."
+    },
+    "virtualWorkspaces": false
+  },
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
@@ -76,7 +82,8 @@
     "viewsWelcome": [
       {
         "view": "odx.dashboard",
-        "contents": "No odx project here: odx reads `[tool.odx]` in pyproject.toml, or repos.yaml.\n[Refresh](command:odx.refresh)"
+        "contents": "No odx project here: odx reads `[tool.odx]` in pyproject.toml.\n[Refresh](command:odx.refresh)",
+        "when": "!odx.project"
       }
     ],
     "commands": [

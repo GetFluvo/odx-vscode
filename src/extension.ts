@@ -51,6 +51,7 @@ interface Ran {
 
 class Odx {
   private program: Promise<string> | undefined;
+  private previous: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -59,27 +60,37 @@ class Odx {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   }
 
-  /** Whether the root is an odx project: `[tool.odx]` in its
-   * `pyproject.toml`, or a `repos.yaml`. */
+  /** Whether the root is in an odx project: a `pyproject.toml` with
+   * `[tool.odx]` there or in a directory above, as odx looks for it. */
   isProject(): boolean {
-    const root = this.root();
-    if (!root) {
-      return false;
+    let dir = this.root();
+    while (dir) {
+      try {
+        const pyproject = fs.readFileSync(
+          path.join(dir, "pyproject.toml"),
+          "utf8",
+        );
+        if (declaresOdx(pyproject)) {
+          return true;
+        }
+      } catch {
+        // No pyproject.toml here; look further up.
+      }
+      const parent = path.dirname(dir);
+      dir = parent === dir ? undefined : parent;
     }
-    try {
-      return declaresOdx(
-        fs.readFileSync(path.join(root, "pyproject.toml"), "utf8"),
-      );
-    } catch {
-      return fs.existsSync(path.join(root, "repos.yaml"));
-    }
+    return false;
   }
 
   path(): Promise<string> {
-    this.program ??= findOdx(this.context, log).catch((error) => {
-      this.program = undefined;
-      throw error;
-    });
+    // After the previous lookup, so two downloads never write at once.
+    this.program ??= this.previous
+      .then(() => findOdx(this.context, log))
+      .catch((error) => {
+        this.program = undefined;
+        throw error;
+      });
+    this.previous = this.program.catch(() => undefined);
     return this.program;
   }
 
@@ -102,6 +113,10 @@ class Odx {
               : error
                 ? 1
                 : 0;
+          // odx did not start (ENOENT, EACCES): say why.
+          if (error && typeof error.code !== "number") {
+            stderr = `${stderr}${error.message}\n`;
+          }
           if (stderr) {
             log.info(stderr.trimEnd());
           }
@@ -120,22 +135,33 @@ function failure(ran: Ran): string {
 
 class DashboardTree implements vscode.TreeDataProvider<Node> {
   dashboards: Dashboard[] = [];
-  private loaded = false;
+  /** Shown instead of the dashboard: loading, or why it failed. */
+  private notice: string | undefined = "Loading…";
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.changed.event;
 
   set(dashboards: Dashboard[]): void {
     this.dashboards = dashboards;
-    this.loaded = true;
+    this.notice = undefined;
     this.changed.fire();
   }
 
+  fail(message: string): void {
+    // A dashboard shown before stays; only a first failure replaces it.
+    if (this.notice !== undefined) {
+      this.notice = `Failed: ${message}`;
+      this.changed.fire();
+    }
+  }
+
   getChildren(node?: Node): Node[] {
-    // Without data the welcome view shows; with nothing in it, a line says so.
+    if (!node && this.notice !== undefined) {
+      return [{ kind: "note", text: this.notice }];
+    }
     const empty = this.dashboards.every((dashboard) =>
       dashboard.sections.every((section) => section.entries.length === 0),
     );
-    if (!node && this.loaded && empty) {
+    if (!node && empty) {
       return [{ kind: "note", text: "Nothing to report" }];
     }
     const sections = (dashboard: Dashboard): Node[] =>
@@ -256,11 +282,16 @@ export function activate(context: vscode.ExtensionContext): Api {
   status.command = "odx.dashboard.focus";
   status.text = "odx";
 
+  // Only the latest refresh shows its result; an older one may end last.
+  let generation = 0;
   const refresh = async (): Promise<void> => {
-    if (!odx.isProject()) {
+    const project = odx.isProject();
+    void vscode.commands.executeCommand("setContext", "odx.project", project);
+    if (!project) {
       status.hide();
       return;
     }
+    const current = ++generation;
     const offline = vscode.workspace
       .getConfiguration("odx")
       .get<boolean>("offline")
@@ -274,6 +305,12 @@ export function activate(context: vscode.ExtensionContext): Api {
             odx.run(["--json", ...offline, "dashboard"]),
             odx.run(["--json", ...offline, "status"]),
           ]);
+          if (current !== generation) {
+            return;
+          }
+          if (rows.code !== 0) {
+            log.warn(`odx status: ${failure(rows)}`);
+          }
           if (board.code !== 0) {
             throw new Error(`odx dashboard: ${failure(board)}`);
           }
@@ -284,10 +321,14 @@ export function activate(context: vscode.ExtensionContext): Api {
           status.text = `$(git-pull-request) ${summary(dashboard.dashboards)}`;
           status.show();
         } catch (error) {
-          log.error(String(error));
-          void vscode.window.showErrorMessage(
-            `odx: ${error instanceof Error ? error.message : error}`,
-          );
+          if (current !== generation) {
+            return;
+          }
+          const message =
+            error instanceof Error ? error.message : String(error);
+          log.error(message);
+          dashboard.fail(message);
+          void vscode.window.showErrorMessage(`odx: ${message}`);
         }
       },
     );
@@ -308,12 +349,37 @@ export function activate(context: vscode.ExtensionContext): Api {
         return;
       }
     }
-    const ran = await odx.run(actArgs(node.entry.id, action, { reason }));
+    let openPr = false;
+    if (action === "port") {
+      const pick = await vscode.window.showQuickPick(
+        [
+          { label: "Port", openPr: false },
+          { label: "Port and open a draft pull request", openPr: true },
+        ],
+        { placeHolder: `Port ${node.entry.id}` },
+      );
+      if (!pick) {
+        return;
+      }
+      openPr = pick.openPr;
+    }
+    const ran = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `odx: ${action} ${node.entry.id}`,
+      },
+      () => odx.run(actArgs(node.entry.id, action, { reason, openPr })),
+    );
     if (ran.code !== 0) {
       void vscode.window.showErrorMessage(`odx: ${failure(ran)}`);
       return;
     }
     log.info(ran.stdout.trimEnd());
+    if (action === "port") {
+      void vscode.window.showInformationMessage(
+        ran.stdout.trim().split("\n").pop() || "odx: ported",
+      );
+    }
     if (opensPullRequest(action)) {
       const open = await vscode.window.showInformationMessage(
         ran.stdout.trim().split("\n")[0] || `odx: ${action} done`,

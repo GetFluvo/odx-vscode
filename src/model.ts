@@ -96,7 +96,8 @@ export function actArgs(
 ): string[] {
   const args = ["dashboard", "act", id, `--${action}`];
   if (options.reason !== undefined) {
-    args.push("--reason", options.reason);
+    // One argument, so a reason that starts with `-` is not read as a flag.
+    args.push(`--reason=${options.reason}`);
   }
   if (options.openPr) {
     args.push("--open-pr");
@@ -104,9 +105,11 @@ export function actArgs(
   return args;
 }
 
-/** Actions that write a branch first and open its pull request on request. */
+/** Actions that write a branch first and open its pull request on request.
+ * A port is asked about before it runs: running it again with `--open-pr`
+ * would port the change a second time. */
 export function opensPullRequest(action: Action): boolean {
-  return action === "port" || action === "promote";
+  return action === "promote";
 }
 
 /** The context value of an entry, which the menus match its actions in. */
@@ -135,14 +138,21 @@ export function summary(dashboards: Dashboard[]): string {
 /** The pull request's page, when it is on a forge odx knows the layout of. */
 export function pullRequestUrl(row: PullRequest): string | undefined {
   const base = row.url.replace(/\.git$/, "").replace(/\/$/, "");
-  if (!/^https:\/\//.test(base)) {
+  let host: string;
+  try {
+    const url = new URL(base);
+    if (url.protocol !== "https:") {
+      return undefined;
+    }
+    host = url.hostname;
+  } catch {
     return undefined;
   }
-  if (base.includes("gitlab")) {
-    return `${base}/-/merge_requests/${row.pr}`;
-  }
-  if (base.startsWith("https://github.com/")) {
+  if (host === "github.com") {
     return `${base}/pull/${row.pr}`;
+  }
+  if (host === "gitlab.com" || host.startsWith("gitlab.")) {
+    return `${base}/-/merge_requests/${row.pr}`;
   }
   return `${base}/pulls/${row.pr}`;
 }

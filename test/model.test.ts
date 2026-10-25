@@ -53,15 +53,18 @@ test("builds the arguments of odx dashboard act", () => {
     "act",
     "glue:x",
     "--mute",
-    "--reason",
-    "not used",
+    "--reason=not used",
   ]);
+  assert.equal(
+    actArgs("glue:x", "mute", { reason: "--later" })[4],
+    "--reason=--later",
+  );
   assert.deepEqual(actArgs("drift:a", "promote", { openPr: true }).slice(3), [
     "--promote",
     "--open-pr",
   ]);
-  assert.ok(opensPullRequest("port") && opensPullRequest("promote"));
-  assert.ok(!opensPullRequest("include"));
+  assert.ok(opensPullRequest("promote"));
+  assert.ok(!opensPullRequest("port") && !opensPullRequest("include"));
 });
 
 test("puts the actions in the context value", () => {
@@ -82,7 +85,19 @@ test("links pull requests per forge", () => {
     "https://codeberg.org/a/b/pulls/789",
   );
   assert.equal(
+    pullRequestUrl({ ...row, url: "https://github.com/a/gitlab-sync.git" }),
+    "https://github.com/a/gitlab-sync/pull/789",
+  );
+  assert.equal(
+    pullRequestUrl({ ...row, url: "https://gitlab.example.org/a/b" }),
+    "https://gitlab.example.org/a/b/-/merge_requests/789",
+  );
+  assert.equal(
     pullRequestUrl({ ...row, url: "git@github.com:a/b.git" }),
+    undefined,
+  );
+  assert.equal(
+    pullRequestUrl({ ...row, url: "http://github.com/a/b" }),
     undefined,
   );
   assert.equal(describe(row), "open, +2 commits");
