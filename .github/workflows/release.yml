@@ -1,0 +1,46 @@
+name: release
+
+# A published GitHub release puts the extension on Open VSX and the Visual
+# Studio Marketplace; a version already there is skipped.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: marketplaces
+      url: https://open-vsx.org/extension/getfluvo/odx
+    permissions:
+      contents: read
+      # Open VSX trusted publishing exchanges the OIDC token for a short-lived one.
+      id-token: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - name: Build the .vsix
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npx vsce package --no-dependencies -o odx.vsix
+      - name: Publish to Open VSX (trusted publishing)
+        run: npx ovsx publish --packagePath odx.vsix --skip-duplicate --trusted-publishing
+      - name: Publish to the Visual Studio Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::notice::No VSCE_PAT secret: not publishing to the Visual Studio Marketplace"
+            exit 0
+          fi
+          npx vsce publish --packagePath odx.vsix --skip-duplicate

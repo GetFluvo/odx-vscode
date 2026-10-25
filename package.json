@@ -1,0 +1,287 @@
+{
+  "name": "odx",
+  "displayName": "odx",
+  "description": "Odoo workspaces with odx: the dashboard of pinned pull requests, upstream changes, ports and drift, and the main odx commands",
+  "version": "0.1.0",
+  "publisher": "getfluvo",
+  "license": "MIT",
+  "icon": "icon.png",
+  "homepage": "https://odx.readthedocs.io/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/getfluvo/odx-vscode.git"
+  },
+  "bugs": "https://github.com/getfluvo/odx-vscode/issues",
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "odoo",
+    "oca",
+    "git-aggregator",
+    "workspace"
+  ],
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "activationEvents": [
+    "workspaceContains:odx.lock",
+    "workspaceContains:repos.yaml",
+    "workspaceContains:pyproject.toml"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "odx",
+      "properties": {
+        "odx.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "Path to the `odx` executable. When empty, the extension uses `odx` from the workspace's `.venv`, then from `PATH`, and otherwise downloads the latest release from PyPI."
+        },
+        "odx.download": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Download `odx` from PyPI when it is not installed."
+        },
+        "odx.offline": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Build the dashboard from cached forge and index data only (`--offline`)."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "odx",
+          "title": "odx",
+          "icon": "$(git-pull-request)"
+        }
+      ]
+    },
+    "views": {
+      "odx": [
+        {
+          "id": "odx.dashboard",
+          "name": "Dashboard"
+        },
+        {
+          "id": "odx.pullRequests",
+          "name": "Pull requests"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "odx.dashboard",
+        "contents": "No odx project here: odx reads `[tool.odx]` in pyproject.toml, or repos.yaml.\n[Refresh](command:odx.refresh)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "odx.refresh",
+        "title": "Refresh",
+        "category": "odx",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "odx.aggregate",
+        "title": "Aggregate",
+        "category": "odx"
+      },
+      {
+        "command": "odx.lock",
+        "title": "Lock",
+        "category": "odx"
+      },
+      {
+        "command": "odx.vendor",
+        "title": "Vendor",
+        "category": "odx"
+      },
+      {
+        "command": "odx.dev",
+        "title": "Set Up the Dev Workspace",
+        "category": "odx"
+      },
+      {
+        "command": "odx.sniff",
+        "title": "Migration Scripts Since HEAD",
+        "category": "odx"
+      },
+      {
+        "command": "odx.checkDeps",
+        "title": "Check Dependencies",
+        "category": "odx"
+      },
+      {
+        "command": "odx.verify",
+        "title": "Verify",
+        "category": "odx"
+      },
+      {
+        "command": "odx.glue",
+        "title": "Glue Addons",
+        "category": "odx"
+      },
+      {
+        "command": "odx.changelog",
+        "title": "Changelog Since HEAD",
+        "category": "odx"
+      },
+      {
+        "command": "odx.showLogs",
+        "title": "Show Logs",
+        "category": "odx"
+      },
+      {
+        "command": "odx.include",
+        "title": "Include",
+        "category": "odx"
+      },
+      {
+        "command": "odx.port",
+        "title": "Port",
+        "category": "odx"
+      },
+      {
+        "command": "odx.mute",
+        "title": "Mute…",
+        "category": "odx"
+      },
+      {
+        "command": "odx.drop",
+        "title": "Drop",
+        "category": "odx"
+      },
+      {
+        "command": "odx.follow",
+        "title": "Follow",
+        "category": "odx"
+      },
+      {
+        "command": "odx.promote",
+        "title": "Promote",
+        "category": "odx"
+      },
+      {
+        "command": "odx.open",
+        "title": "Open on the Forge",
+        "category": "odx",
+        "icon": "$(link-external)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "odx.refresh",
+          "when": "view == odx.dashboard || view == odx.pullRequests",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "odx.include",
+          "when": "view == odx.dashboard && viewItem =~ /\\binclude\\b/",
+          "group": "1_act@1"
+        },
+        {
+          "command": "odx.port",
+          "when": "view == odx.dashboard && viewItem =~ /\\bport\\b/",
+          "group": "1_act@2"
+        },
+        {
+          "command": "odx.drop",
+          "when": "view == odx.dashboard && viewItem =~ /\\bdrop\\b/",
+          "group": "1_act@3"
+        },
+        {
+          "command": "odx.follow",
+          "when": "view == odx.dashboard && viewItem =~ /\\bfollow\\b/",
+          "group": "1_act@4"
+        },
+        {
+          "command": "odx.promote",
+          "when": "view == odx.dashboard && viewItem =~ /\\bpromote\\b/",
+          "group": "1_act@5"
+        },
+        {
+          "command": "odx.mute",
+          "when": "view == odx.dashboard && viewItem =~ /\\bmute\\b/",
+          "group": "2_mute@1"
+        },
+        {
+          "command": "odx.open",
+          "when": "view == odx.pullRequests && viewItem == pr",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "odx.include",
+          "when": "false"
+        },
+        {
+          "command": "odx.port",
+          "when": "false"
+        },
+        {
+          "command": "odx.mute",
+          "when": "false"
+        },
+        {
+          "command": "odx.drop",
+          "when": "false"
+        },
+        {
+          "command": "odx.follow",
+          "when": "false"
+        },
+        {
+          "command": "odx.promote",
+          "when": "false"
+        },
+        {
+          "command": "odx.open",
+          "when": "false"
+        }
+      ]
+    },
+    "taskDefinitions": [
+      {
+        "type": "odx",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The odx command the task runs"
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test out/*.test.js",
+    "test:vscode": "node out/runTest.js",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.95.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.0.0",
+    "esbuild": "0.28.2",
+    "ovsx": "1.2.0",
+    "prettier": "3.8.3",
+    "typescript": "5.9.3"
+  }
+}

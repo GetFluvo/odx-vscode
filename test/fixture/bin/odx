@@ -1,0 +1,22 @@
+#!/usr/bin/env node
+// A stand-in for odx: prints the fixture's JSON and records the arguments of
+// `odx dashboard act` in $ODX_FAKE_LOG.
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv
+  .slice(2)
+  .filter((arg) => !arg.startsWith("--json") && arg !== "--offline");
+const fixture = path.join(__dirname, "..");
+if (args[0] === "dashboard" && args[1] === "act") {
+  fs.appendFileSync(process.env.ODX_FAKE_LOG, JSON.stringify(args) + "\n");
+  process.stdout.write(`${args[3].slice(2)} ${args[2]}: done\n`);
+} else if (args[0] === "dashboard") {
+  process.stdout.write(fs.readFileSync(path.join(fixture, "dashboards.json")));
+} else if (args[0] === "status") {
+  process.stdout.write(fs.readFileSync(path.join(fixture, "status.json")));
+} else if (args[0] === "changelog") {
+  process.stdout.write("# Changelog: HEAD → working tree\n\nNo changes.\n");
+} else {
+  process.stderr.write(`error: unexpected ${args.join(" ")}\n`);
+  process.exit(2);
+}

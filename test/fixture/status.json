@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "pull_requests": [
+    {
+      "name": "pos",
+      "url": "https://github.com/OCA/pos.git",
+      "pr": 789,
+      "state": "open",
+      "title": "[19.0][FIX] pos_x: rounding",
+      "merged_at": null,
+      "labels": [],
+      "head": "0123456789abcdef0123456789abcdef01234567",
+      "new_commits": 2,
+      "advice": "",
+      "error": null
+    }
+  ],
+  "modified": []
+}

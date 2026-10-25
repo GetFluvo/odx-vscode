@@ -1,0 +1,5 @@
+[project]
+name = "demo"
+
+[tool.odx]
+odoo_version = "19.0"

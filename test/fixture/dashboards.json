@@ -1,0 +1,66 @@
+[
+  {
+    "schema": 1,
+    "series": "19.0",
+    "generated_at": 1761400000,
+    "sections": [
+      {
+        "kind": "pinned",
+        "fetched_at": 1761400000,
+        "entries": [
+          {
+            "id": "pr:OCA/pos#789",
+            "addon": "pos_x",
+            "subject": "OCA/pos#789 [19.0][FIX] pos_x: rounding",
+            "state": "open",
+            "actions": [],
+            "notes": []
+          }
+        ]
+      },
+      {
+        "kind": "droppable",
+        "fetched_at": 1761400000,
+        "entries": [
+          {
+            "id": "pr:OCA/sale-workflow#12",
+            "addon": "sale_x",
+            "subject": "OCA/sale-workflow#12 [19.0][IMP] sale_x",
+            "state": "merged",
+            "actions": ["drop", "mute"],
+            "notes": ["merged 2026-10-20: the override can go"]
+          }
+        ]
+      },
+      { "kind": "new-upstream", "fetched_at": 1761400000, "entries": [] },
+      {
+        "kind": "drift",
+        "fetched_at": 1761400000,
+        "entries": [
+          {
+            "id": "drift:test->prod:addon/sale_x",
+            "addon": "sale_x",
+            "subject": "sale_x",
+            "state": "newer on test",
+            "actions": ["promote"],
+            "notes": []
+          }
+        ]
+      },
+      {
+        "kind": "suppressed",
+        "fetched_at": 1761400000,
+        "entries": [
+          {
+            "id": "fwd:OCA/pos#1->19.0",
+            "addon": "pos_y",
+            "subject": "OCA/pos#1",
+            "state": "muted",
+            "actions": ["include"],
+            "notes": []
+          }
+        ]
+      }
+    ]
+  }
+]

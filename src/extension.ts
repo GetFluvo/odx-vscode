@@ -1,0 +1,433 @@
+// odx for VS Code: the dashboard of `odx dashboard --json` and the pull
+// requests of `odx status --json` as tree views, their actions through
+// `odx dashboard act`, and the main odx commands as tasks. Lint diagnostics
+// come from odoo-lint's own extension.
+
+import { execFile } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as vscode from "vscode";
+import { findOdx } from "./binary";
+import {
+  Action,
+  actArgs,
+  contextValue,
+  Dashboard,
+  declaresOdx,
+  describe,
+  Entry,
+  opensPullRequest,
+  parseDashboards,
+  parseStatus,
+  PullRequest,
+  pullRequestUrl,
+  Section,
+  sectionTitle,
+  summary,
+} from "./model";
+
+let log: vscode.LogOutputChannel;
+
+/** What the commands and the tests reach. */
+export interface Api {
+  refresh(): Promise<void>;
+  dashboards(): Dashboard[];
+  pullRequests(): PullRequest[];
+  statusText(): string;
+}
+
+type Node =
+  | { kind: "series"; dashboard: Dashboard }
+  | { kind: "section"; section: Section }
+  | { kind: "entry"; entry: Entry }
+  | { kind: "note"; text: string }
+  | { kind: "pr"; row: PullRequest };
+
+interface Ran {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+class Odx {
+  private program: Promise<string> | undefined;
+
+  constructor(private readonly context: vscode.ExtensionContext) {}
+
+  /** The root of the project: the first workspace folder. */
+  root(): string | undefined {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  }
+
+  /** Whether the root is an odx project: `[tool.odx]` in its
+   * `pyproject.toml`, or a `repos.yaml`. */
+  isProject(): boolean {
+    const root = this.root();
+    if (!root) {
+      return false;
+    }
+    try {
+      return declaresOdx(
+        fs.readFileSync(path.join(root, "pyproject.toml"), "utf8"),
+      );
+    } catch {
+      return fs.existsSync(path.join(root, "repos.yaml"));
+    }
+  }
+
+  path(): Promise<string> {
+    this.program ??= findOdx(this.context, log).catch((error) => {
+      this.program = undefined;
+      throw error;
+    });
+    return this.program;
+  }
+
+  forget(): void {
+    this.program = undefined;
+  }
+
+  async run(args: string[]): Promise<Ran> {
+    const program = await this.path();
+    log.info(`odx ${args.join(" ")}`);
+    return new Promise((resolve) => {
+      execFile(
+        program,
+        args,
+        { cwd: this.root(), maxBuffer: 64 * 1024 * 1024 },
+        (error, stdout, stderr) => {
+          const code =
+            error && typeof error.code === "number"
+              ? error.code
+              : error
+                ? 1
+                : 0;
+          if (stderr) {
+            log.info(stderr.trimEnd());
+          }
+          resolve({ code, stdout, stderr });
+        },
+      );
+    });
+  }
+}
+
+function failure(ran: Ran): string {
+  return (
+    ran.stderr.trim().split("\n").pop() || `odx exited with code ${ran.code}`
+  );
+}
+
+class DashboardTree implements vscode.TreeDataProvider<Node> {
+  dashboards: Dashboard[] = [];
+  private loaded = false;
+  private readonly changed = new vscode.EventEmitter<void>();
+  readonly onDidChangeTreeData = this.changed.event;
+
+  set(dashboards: Dashboard[]): void {
+    this.dashboards = dashboards;
+    this.loaded = true;
+    this.changed.fire();
+  }
+
+  getChildren(node?: Node): Node[] {
+    // Without data the welcome view shows; with nothing in it, a line says so.
+    const empty = this.dashboards.every((dashboard) =>
+      dashboard.sections.every((section) => section.entries.length === 0),
+    );
+    if (!node && this.loaded && empty) {
+      return [{ kind: "note", text: "Nothing to report" }];
+    }
+    const sections = (dashboard: Dashboard): Node[] =>
+      dashboard.sections
+        .filter((section) => section.entries.length > 0)
+        .map((section) => ({ kind: "section", section }));
+    if (!node) {
+      return this.dashboards.length === 1
+        ? sections(this.dashboards[0])
+        : this.dashboards.map((dashboard) => ({ kind: "series", dashboard }));
+    }
+    switch (node.kind) {
+      case "series":
+        return sections(node.dashboard);
+      case "section":
+        return node.section.entries.map((entry) => ({ kind: "entry", entry }));
+      case "entry":
+        return node.entry.notes.map((text) => ({ kind: "note", text }));
+      default:
+        return [];
+    }
+  }
+
+  getTreeItem(node: Node): vscode.TreeItem {
+    const { Collapsed, Expanded, None } = vscode.TreeItemCollapsibleState;
+    switch (node.kind) {
+      case "series": {
+        const item = new vscode.TreeItem(node.dashboard.series, Expanded);
+        item.iconPath = new vscode.ThemeIcon("versions");
+        return item;
+      }
+      case "section": {
+        const item = new vscode.TreeItem(
+          sectionTitle(node.section.kind),
+          node.section.kind === "suppressed" ? Collapsed : Expanded,
+        );
+        item.description = String(node.section.entries.length);
+        return item;
+      }
+      case "entry": {
+        const { entry } = node;
+        const item = new vscode.TreeItem(
+          entry.subject,
+          entry.notes.length ? Collapsed : None,
+        );
+        item.id = entry.id;
+        item.description = entry.state;
+        item.tooltip = new vscode.MarkdownString(
+          [`\`${entry.id}\``, ...entry.notes].join("\n\n"),
+        );
+        item.contextValue = contextValue(entry);
+        return item;
+      }
+      case "note":
+        return new vscode.TreeItem(node.text, None);
+      case "pr":
+        return new vscode.TreeItem(node.row.name, None);
+    }
+  }
+}
+
+class PullRequestTree implements vscode.TreeDataProvider<Node> {
+  rows: PullRequest[] = [];
+  private readonly changed = new vscode.EventEmitter<void>();
+  readonly onDidChangeTreeData = this.changed.event;
+
+  set(rows: PullRequest[]): void {
+    this.rows = rows;
+    this.changed.fire();
+  }
+
+  getChildren(node?: Node): Node[] {
+    return node ? [] : this.rows.map((row) => ({ kind: "pr", row }));
+  }
+
+  getTreeItem(node: Node): vscode.TreeItem {
+    if (node.kind !== "pr") {
+      return new vscode.TreeItem("");
+    }
+    const { row } = node;
+    const item = new vscode.TreeItem(
+      `${row.name}#${row.pr}${row.title ? ` ${row.title}` : ""}`,
+    );
+    item.description = describe(row);
+    item.tooltip = row.advice || undefined;
+    item.contextValue = "pr";
+    item.iconPath = new vscode.ThemeIcon(
+      row.state === "merged"
+        ? "git-merge"
+        : row.state === "closed"
+          ? "git-pull-request-closed"
+          : "git-pull-request",
+    );
+    return item;
+  }
+}
+
+/** The odx commands that run as tasks in a terminal, by command id. */
+const TASKS: Record<string, { args: string[]; title: string }> = {
+  "odx.aggregate": { args: ["aggregate"], title: "aggregate" },
+  "odx.lock": { args: ["lock"], title: "lock" },
+  "odx.vendor": { args: ["vendor"], title: "vendor" },
+  "odx.dev": { args: ["dev"], title: "dev" },
+  "odx.sniff": { args: ["sniff", "--since", "HEAD"], title: "sniff" },
+  "odx.checkDeps": { args: ["check-deps"], title: "check-deps" },
+  "odx.verify": { args: ["verify"], title: "verify" },
+  "odx.glue": { args: ["glue"], title: "glue" },
+};
+
+export function activate(context: vscode.ExtensionContext): Api {
+  log = vscode.window.createOutputChannel("odx", { log: true });
+  const odx = new Odx(context);
+  const dashboard = new DashboardTree();
+  const pullRequests = new PullRequestTree();
+  const status = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+  );
+  status.command = "odx.dashboard.focus";
+  status.text = "odx";
+
+  const refresh = async (): Promise<void> => {
+    if (!odx.isProject()) {
+      status.hide();
+      return;
+    }
+    const offline = vscode.workspace
+      .getConfiguration("odx")
+      .get<boolean>("offline")
+      ? ["--offline"]
+      : [];
+    await vscode.window.withProgress(
+      { location: { viewId: "odx.dashboard" } },
+      async () => {
+        try {
+          const [board, rows] = await Promise.all([
+            odx.run(["--json", ...offline, "dashboard"]),
+            odx.run(["--json", ...offline, "status"]),
+          ]);
+          if (board.code !== 0) {
+            throw new Error(`odx dashboard: ${failure(board)}`);
+          }
+          dashboard.set(parseDashboards(board.stdout));
+          pullRequests.set(
+            rows.code === 0 ? parseStatus(rows.stdout).pull_requests : [],
+          );
+          status.text = `$(git-pull-request) ${summary(dashboard.dashboards)}`;
+          status.show();
+        } catch (error) {
+          log.error(String(error));
+          void vscode.window.showErrorMessage(
+            `odx: ${error instanceof Error ? error.message : error}`,
+          );
+        }
+      },
+    );
+  };
+
+  const act = (action: Action) => async (node?: Node) => {
+    if (node?.kind !== "entry") {
+      return;
+    }
+    let reason: string | undefined;
+    if (action === "mute") {
+      reason = await vscode.window.showInputBox({
+        prompt: `Why mute ${node.entry.id}?`,
+        validateInput: (text) =>
+          text.trim() ? undefined : "A reason is required",
+      });
+      if (reason === undefined) {
+        return;
+      }
+    }
+    const ran = await odx.run(actArgs(node.entry.id, action, { reason }));
+    if (ran.code !== 0) {
+      void vscode.window.showErrorMessage(`odx: ${failure(ran)}`);
+      return;
+    }
+    log.info(ran.stdout.trimEnd());
+    if (opensPullRequest(action)) {
+      const open = await vscode.window.showInformationMessage(
+        ran.stdout.trim().split("\n")[0] || `odx: ${action} done`,
+        "Open Pull Request",
+        "Show Output",
+      );
+      if (open === "Show Output") {
+        log.show();
+      } else if (open === "Open Pull Request") {
+        const opened = await odx.run(
+          actArgs(node.entry.id, action, { openPr: true }),
+        );
+        if (opened.code !== 0) {
+          void vscode.window.showErrorMessage(`odx: ${failure(opened)}`);
+        } else {
+          void vscode.window.showInformationMessage(
+            opened.stdout.trim().split("\n").pop() ||
+              "odx: pull request opened",
+          );
+        }
+      }
+    }
+    await refresh();
+  };
+
+  const task = (id: string) => async () => {
+    const { args, title } = TASKS[id];
+    const program = await odx.path().catch((error) => {
+      void vscode.window.showErrorMessage(`odx: ${error.message ?? error}`);
+      return undefined;
+    });
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!program || !folder) {
+      return;
+    }
+    const execution = await vscode.tasks.executeTask(
+      new vscode.Task(
+        { type: "odx", command: title },
+        folder,
+        title,
+        "odx",
+        new vscode.ProcessExecution(program, args, { cwd: folder.uri.fsPath }),
+      ),
+    );
+    if (id !== "odx.lock") {
+      return;
+    }
+    const done = vscode.tasks.onDidEndTaskProcess(async (event) => {
+      if (event.execution !== execution) {
+        return;
+      }
+      done.dispose();
+      if (event.exitCode === 0) {
+        const show = await vscode.window.showInformationMessage(
+          "odx: odx.lock written",
+          "Show Changelog",
+        );
+        if (show) {
+          await vscode.commands.executeCommand("odx.changelog");
+        }
+      }
+    });
+    context.subscriptions.push(done);
+  };
+
+  const changelog = async () => {
+    const ran = await odx.run(["changelog"]);
+    if (ran.code !== 0) {
+      void vscode.window.showErrorMessage(`odx: ${failure(ran)}`);
+      return;
+    }
+    const document = await vscode.workspace.openTextDocument({
+      language: "markdown",
+      content: ran.stdout,
+    });
+    await vscode.commands.executeCommand("markdown.showPreview", document.uri);
+  };
+
+  context.subscriptions.push(
+    log,
+    status,
+    vscode.window.registerTreeDataProvider("odx.dashboard", dashboard),
+    vscode.window.registerTreeDataProvider("odx.pullRequests", pullRequests),
+    vscode.commands.registerCommand("odx.refresh", refresh),
+    vscode.commands.registerCommand("odx.showLogs", () => log.show()),
+    vscode.commands.registerCommand("odx.changelog", changelog),
+    vscode.commands.registerCommand("odx.open", (node?: Node) => {
+      const url = node?.kind === "pr" ? pullRequestUrl(node.row) : undefined;
+      if (url) {
+        void vscode.env.openExternal(vscode.Uri.parse(url));
+      }
+    }),
+    ...(
+      ["include", "port", "mute", "drop", "follow", "promote"] as Action[]
+    ).map((action) =>
+      vscode.commands.registerCommand(`odx.${action}`, act(action)),
+    ),
+    ...Object.keys(TASKS).map((id) =>
+      vscode.commands.registerCommand(id, task(id)),
+    ),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("odx")) {
+        odx.forget();
+        void refresh();
+      }
+    }),
+  );
+  void refresh();
+  return {
+    refresh,
+    dashboards: () => dashboard.dashboards,
+    pullRequests: () => pullRequests.rows,
+    statusText: () => status.text,
+  };
+}
+
+export function deactivate(): void {}
