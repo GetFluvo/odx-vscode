@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { unzipSync } from "fflate";
 import * as vscode from "vscode";
-import { pickWheel, PypiFile, scriptInWheel } from "./wheel";
+import { megabytes, pickWheel, PypiFile, scriptInWheel } from "./wheel";
 
 const EXE = process.platform === "win32" ? "odx.exe" : "odx";
 
@@ -67,9 +67,16 @@ function newestDownloaded(storage: string): string | undefined {
   return undefined;
 }
 
+/** Whether to download odx-cli `version` (`size` to show, if known). */
+export type Confirm = (version: string, size: string) => Promise<boolean>;
+
+const NOT_FOUND =
+  "odx not found; install it with `uv tool install odx-cli` or set odx.path";
+
 async function download(
   storage: string,
   log: vscode.OutputChannel,
+  confirm: Confirm,
 ): Promise<string> {
   const index = await fetchJson("https://pypi.org/pypi/odx-cli/json");
   const version: string = index.info.version;
@@ -90,6 +97,11 @@ async function download(
     throw new Error(
       `odx-cli ${version} has no build for ${process.platform}-${process.arch}`,
     );
+  }
+  // The first download is asked for; updates of it are not.
+  const first = newestDownloaded(storage) === undefined;
+  if (first && !(await confirm(version, megabytes(wheel.size)))) {
+    throw new Error(NOT_FOUND);
   }
   log.appendLine(`Downloading ${wheel.url}`);
   const data = await vscode.window.withProgress(
@@ -130,6 +142,7 @@ async function download(
 export async function findOdx(
   context: vscode.ExtensionContext,
   log: vscode.OutputChannel,
+  confirm: Confirm,
 ): Promise<string> {
   const config = vscode.workspace.getConfiguration("odx");
   const configured = config.get<string>("path");
@@ -141,14 +154,15 @@ export async function findOdx(
     return local;
   }
   if (!config.get<boolean>("download")) {
-    throw new Error(
-      "odx not found; install it with `uv tool install odx-cli` or set odx.path",
-    );
+    throw new Error(NOT_FOUND);
   }
   const storage = context.globalStorageUri.fsPath;
   try {
-    return await download(storage, log);
+    return await download(storage, log, confirm);
   } catch (error) {
+    if (error instanceof Error && error.message === NOT_FOUND) {
+      throw error;
+    }
     const fallback = newestDownloaded(storage);
     if (fallback) {
       log.appendLine(`Could not check PyPI (${error}); using ${fallback}`);

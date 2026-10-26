@@ -2,11 +2,20 @@
 
 ## 0.1.1
 
+- A folder with a git-aggregator `repos.yaml` offers to import it, in the
+  welcome view and as the command "odx: Import repos.yaml".
+- The first download of odx asks first, with its size; "Never" turns
+  `odx.download` off.
+- The views refresh when an odx task ends.
+- A click on a pull request opens it on the forge.
+- Command titles say what they do ("Aggregate the Repositories",
+  "Show Migration Scripts Since HEAD", ...).
+- In a multi-root workspace, odx runs in the first folder that is in an odx
+  project.
 - Port asks first whether to open a draft pull request too; running the
   port a second time to open one failed on the branch it had written.
 - Only `pyproject.toml` with `[tool.odx]` makes a project, also in a
-  directory above the workspace; a bare `repos.yaml` is git-aggregator's,
-  which odx does not read.
+  directory above the workspace.
 - The dashboard says it is loading, or why it failed, instead of "No odx
   project here"; an older refresh no longer overwrites a newer one.
 - An odx that cannot start says why (`spawn … ENOENT`).

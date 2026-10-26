@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { findOdx } from "./binary";
+import { Confirm, findOdx } from "./binary";
 import {
   Action,
   actArgs,
@@ -49,43 +49,74 @@ interface Ran {
   stderr: string;
 }
 
+/** Whether `folder` is in an odx project: a `pyproject.toml` with
+ * `[tool.odx]` there or in a directory above, as odx looks for it. */
+function inProject(folder: string): boolean {
+  let dir: string | undefined = folder;
+  while (dir) {
+    try {
+      const pyproject = fs.readFileSync(
+        path.join(dir, "pyproject.toml"),
+        "utf8",
+      );
+      if (declaresOdx(pyproject)) {
+        return true;
+      }
+    } catch {
+      // No pyproject.toml here; look further up.
+    }
+    const parent = path.dirname(dir);
+    dir = parent === dir ? undefined : parent;
+  }
+  return false;
+}
+
+/** Ask once a session before the first download of odx; "Never" turns
+ * downloading off. */
+let declined = false;
+const confirmDownload: Confirm = async (version, size) => {
+  if (declined) {
+    return false;
+  }
+  const answer = await vscode.window.showInformationMessage(
+    `odx is not installed. Download odx-cli ${version}${size ? ` (${size})` : ""} from PyPI?`,
+    "Download",
+    "Not Now",
+    "Never",
+  );
+  if (answer === "Never") {
+    await vscode.workspace
+      .getConfiguration("odx")
+      .update("download", false, vscode.ConfigurationTarget.Global);
+  }
+  declined = answer !== "Download";
+  return !declined;
+};
+
 class Odx {
   private program: Promise<string> | undefined;
   private previous: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
-  /** The root of the project: the first workspace folder. */
+  /** The folder odx runs in: the first workspace folder in an odx project,
+   * else the first one. */
   root(): string | undefined {
-    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const folders = (vscode.workspace.workspaceFolders ?? []).map(
+      (folder) => folder.uri.fsPath,
+    );
+    return folders.find(inProject) ?? folders[0];
   }
 
-  /** Whether the root is in an odx project: a `pyproject.toml` with
-   * `[tool.odx]` there or in a directory above, as odx looks for it. */
   isProject(): boolean {
-    let dir = this.root();
-    while (dir) {
-      try {
-        const pyproject = fs.readFileSync(
-          path.join(dir, "pyproject.toml"),
-          "utf8",
-        );
-        if (declaresOdx(pyproject)) {
-          return true;
-        }
-      } catch {
-        // No pyproject.toml here; look further up.
-      }
-      const parent = path.dirname(dir);
-      dir = parent === dir ? undefined : parent;
-    }
-    return false;
+    const root = this.root();
+    return root !== undefined && inProject(root);
   }
 
   path(): Promise<string> {
     // After the previous lookup, so two downloads never write at once.
     this.program ??= this.previous
-      .then(() => findOdx(this.context, log))
+      .then(() => findOdx(this.context, log, confirmDownload))
       .catch((error) => {
         this.program = undefined;
         throw error;
@@ -261,6 +292,13 @@ class PullRequestTree implements vscode.TreeDataProvider<Node> {
     item.description = describe(row);
     item.tooltip = row.advice || undefined;
     item.contextValue = "pr";
+    if (pullRequestUrl(row)) {
+      item.command = {
+        command: "odx.open",
+        title: "Open on the Forge",
+        arguments: [node],
+      };
+    }
     item.iconPath = new vscode.ThemeIcon(
       row.state === "merged"
         ? "git-merge"
@@ -282,6 +320,7 @@ const TASKS: Record<string, { args: string[]; title: string }> = {
   "odx.checkDeps": { args: ["check-deps"], title: "check-deps" },
   "odx.verify": { args: ["verify"], title: "verify" },
   "odx.glue": { args: ["glue"], title: "glue" },
+  "odx.import": { args: ["import", "repos.yaml", "--write"], title: "import" },
 };
 
 export function activate(context: vscode.ExtensionContext): Api {
@@ -300,6 +339,12 @@ export function activate(context: vscode.ExtensionContext): Api {
   const refresh = async (): Promise<void> => {
     const project = odx.isProject();
     void vscode.commands.executeCommand("setContext", "odx.project", project);
+    const root = odx.root();
+    void vscode.commands.executeCommand(
+      "setContext",
+      "odx.reposYaml",
+      root !== undefined && fs.existsSync(path.join(root, "repos.yaml")),
+    );
     if (!project) {
       status.hide();
       dashboard.clear();
@@ -426,7 +471,10 @@ export function activate(context: vscode.ExtensionContext): Api {
       void vscode.window.showErrorMessage(`odx: ${error.message ?? error}`);
       return undefined;
     });
-    const folder = vscode.workspace.workspaceFolders?.[0];
+    const root = odx.root();
+    const folder = vscode.workspace.workspaceFolders?.find(
+      (candidate) => candidate.uri.fsPath === root,
+    );
     if (!program || !folder) {
       return;
     }
@@ -476,6 +524,12 @@ export function activate(context: vscode.ExtensionContext): Api {
   context.subscriptions.push(
     log,
     status,
+    // What a task changed shows in the views once it is done.
+    vscode.tasks.onDidEndTaskProcess((event) => {
+      if (event.execution.task.definition.type === "odx") {
+        void refresh();
+      }
+    }),
     vscode.window.registerTreeDataProvider("odx.dashboard", dashboard),
     vscode.window.registerTreeDataProvider("odx.pullRequests", pullRequests),
     vscode.commands.registerCommand("odx.refresh", refresh),

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pickWheel, scriptInWheel } from "../src/wheel";
+import { megabytes, pickWheel, scriptInWheel } from "../src/wheel";
 
 // The file names of a real release (odx-cli 0.0.7).
 const files = [
@@ -42,4 +42,9 @@ test("finds odx in the wheel", () => {
     scriptInWheel("0.0.7", "win32"),
     "odx_cli-0.0.7.data/scripts/odx.exe",
   );
+});
+
+test("says how big a download is", () => {
+  assert.equal(megabytes(12_897_485), "12.3 MB");
+  assert.equal(megabytes(undefined), "");
 });
