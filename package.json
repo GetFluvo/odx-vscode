@@ -26,7 +26,8 @@
   },
   "activationEvents": [
     "workspaceContains:odx.lock",
-    "workspaceContains:pyproject.toml"
+    "workspaceContains:pyproject.toml",
+    "workspaceContains:repos.yaml"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -83,7 +84,12 @@
       {
         "view": "odx.dashboard",
         "contents": "No odx project here: odx reads `[tool.odx]` in pyproject.toml.\n[Refresh](command:odx.refresh)",
-        "when": "!odx.project"
+        "when": "!odx.project && !odx.reposYaml"
+      },
+      {
+        "view": "odx.dashboard",
+        "contents": "This folder has a git-aggregator `repos.yaml`. Import it to make an odx project: odx writes its repositories to `[tool.odx]` in pyproject.toml.\n[Import repos.yaml](command:odx.import)",
+        "when": "!odx.project && odx.reposYaml"
       }
     ],
     "commands": [
@@ -95,47 +101,52 @@
       },
       {
         "command": "odx.aggregate",
-        "title": "Aggregate",
+        "title": "Aggregate the Repositories",
         "category": "odx"
       },
       {
         "command": "odx.lock",
-        "title": "Lock",
+        "title": "Lock (odx.lock)",
         "category": "odx"
       },
       {
         "command": "odx.vendor",
-        "title": "Vendor",
+        "title": "Vendor the Locked Packages",
         "category": "odx"
       },
       {
         "command": "odx.dev",
-        "title": "Set Up the Dev Workspace",
+        "title": "Set Up the Development Workspace",
         "category": "odx"
       },
       {
         "command": "odx.sniff",
-        "title": "Migration Scripts Since HEAD",
+        "title": "Show Migration Scripts Since HEAD",
         "category": "odx"
       },
       {
         "command": "odx.checkDeps",
-        "title": "Check Dependencies",
+        "title": "Check Manifest Dependencies",
         "category": "odx"
       },
       {
         "command": "odx.verify",
-        "title": "Verify",
+        "title": "Verify the Checkout",
         "category": "odx"
       },
       {
         "command": "odx.glue",
-        "title": "Glue Addons",
+        "title": "Find Missing Glue Addons",
         "category": "odx"
       },
       {
         "command": "odx.changelog",
-        "title": "Changelog Since HEAD",
+        "title": "Show the Changelog of odx.lock",
+        "category": "odx"
+      },
+      {
+        "command": "odx.import",
+        "title": "Import repos.yaml",
         "category": "odx"
       },
       {
@@ -253,6 +264,10 @@
         {
           "command": "odx.open",
           "when": "false"
+        },
+        {
+          "command": "odx.import",
+          "when": "odx.reposYaml && !odx.project"
         }
       ]
     },

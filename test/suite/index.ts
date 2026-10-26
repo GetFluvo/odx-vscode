@@ -28,5 +28,7 @@ export async function run(): Promise<void> {
     .split("\n")
     .map((line) => JSON.parse(line));
   assert.deepEqual(acts, [["dashboard", "act", drop.id, "--drop"]]);
+  const commands = await vscode.commands.getCommands(true);
+  assert.ok(commands.includes("odx.import"), "odx.import is registered");
   console.log(`odx: ${api.statusText()}; ${drop.id} dropped`);
 }

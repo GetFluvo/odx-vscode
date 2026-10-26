@@ -5,6 +5,12 @@ export interface PypiFile {
   filename: string;
   url: string;
   digests: { sha256: string };
+  size?: number;
+}
+
+/** A download size for people: `12.3 MB`, or nothing when unknown. */
+export function megabytes(bytes: number | undefined): string {
+  return bytes === undefined ? "" : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /** Fragments of the wheel file name that run on a platform, or undefined. */
