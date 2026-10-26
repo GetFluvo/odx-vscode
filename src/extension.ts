@@ -137,12 +137,22 @@ class DashboardTree implements vscode.TreeDataProvider<Node> {
   dashboards: Dashboard[] = [];
   /** Shown instead of the dashboard: loading, or why it failed. */
   private notice: string | undefined = "Loading…";
+  private welcome = false;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.changed.event;
 
   set(dashboards: Dashboard[]): void {
     this.dashboards = dashboards;
     this.notice = undefined;
+    this.welcome = false;
+    this.changed.fire();
+  }
+
+  /** Not an odx project: no rows, so the welcome view shows. */
+  clear(): void {
+    this.dashboards = [];
+    this.notice = undefined;
+    this.welcome = true;
     this.changed.fire();
   }
 
@@ -155,6 +165,9 @@ class DashboardTree implements vscode.TreeDataProvider<Node> {
   }
 
   getChildren(node?: Node): Node[] {
+    if (!node && this.welcome) {
+      return [];
+    }
     if (!node && this.notice !== undefined) {
       return [{ kind: "note", text: this.notice }];
     }
@@ -289,6 +302,8 @@ export function activate(context: vscode.ExtensionContext): Api {
     void vscode.commands.executeCommand("setContext", "odx.project", project);
     if (!project) {
       status.hide();
+      dashboard.clear();
+      pullRequests.set([]);
       return;
     }
     const current = ++generation;
