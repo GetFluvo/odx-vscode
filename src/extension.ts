@@ -74,12 +74,12 @@ function inProject(folder: string): boolean {
 /** Ask once a session before the first download of odx; "Never" turns
  * downloading off. */
 let declined = false;
-const confirmDownload: Confirm = async (version, size) => {
+const confirmDownload: Confirm = async () => {
   if (declined) {
     return false;
   }
   const answer = await vscode.window.showInformationMessage(
-    `odx is not installed. Download odx-cli ${version}${size ? ` (${size})` : ""} from PyPI?`,
+    "odx is not installed. Download the latest odx-cli from PyPI?",
     "Download",
     "Not Now",
     "Never",
@@ -100,12 +100,18 @@ class Odx {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   /** The folder odx runs in: the first workspace folder in an odx project,
-   * else the first one. */
+   * else the first one with a `repos.yaml` to import, else the first one. */
   root(): string | undefined {
     const folders = (vscode.workspace.workspaceFolders ?? []).map(
       (folder) => folder.uri.fsPath,
     );
-    return folders.find(inProject) ?? folders[0];
+    return (
+      folders.find(inProject) ??
+      folders.find((folder) =>
+        fs.existsSync(path.join(folder, "repos.yaml")),
+      ) ??
+      folders[0]
+    );
   }
 
   isProject(): boolean {

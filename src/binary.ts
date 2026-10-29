@@ -67,8 +67,8 @@ function newestDownloaded(storage: string): string | undefined {
   return undefined;
 }
 
-/** Whether to download odx-cli `version` (`size` to show, if known). */
-export type Confirm = (version: string, size: string) => Promise<boolean>;
+/** Whether to download odx-cli from PyPI. */
+export type Confirm = () => Promise<boolean>;
 
 const NOT_FOUND =
   "odx not found; install it with `uv tool install odx-cli` or set odx.path";
@@ -78,6 +78,10 @@ async function download(
   log: vscode.OutputChannel,
   confirm: Confirm,
 ): Promise<string> {
+  // The first download is asked for before PyPI is; updates of it are not.
+  if (newestDownloaded(storage) === undefined && !(await confirm())) {
+    throw new Error(NOT_FOUND);
+  }
   const index = await fetchJson("https://pypi.org/pypi/odx-cli/json");
   const version: string = index.info.version;
   // The version names a directory: nothing but a version may get there.
@@ -98,16 +102,12 @@ async function download(
       `odx-cli ${version} has no build for ${process.platform}-${process.arch}`,
     );
   }
-  // The first download is asked for; updates of it are not.
-  const first = newestDownloaded(storage) === undefined;
-  if (first && !(await confirm(version, megabytes(wheel.size)))) {
-    throw new Error(NOT_FOUND);
-  }
+  const size = megabytes(wheel.size);
   log.appendLine(`Downloading ${wheel.url}`);
   const data = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Window,
-      title: `odx: downloading odx ${version}`,
+      title: `odx: downloading odx ${version}${size ? ` (${size})` : ""}`,
     },
     async () => {
       const response = await fetch(wheel.url);

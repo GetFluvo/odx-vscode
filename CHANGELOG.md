@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The first download of odx asks before reading PyPI; the progress shows its
+  size.
+- In a multi-root workspace without an odx project, a `repos.yaml` in any
+  folder is offered for import, and odx runs there.
+
 ## 0.1.1
 
 - A folder with a git-aggregator `repos.yaml` offers to import it, in the
