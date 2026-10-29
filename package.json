@@ -2,7 +2,7 @@
   "name": "odx",
   "displayName": "odx",
   "description": "Odoo workspaces with odx: the dashboard of pinned pull requests, upstream changes, ports and drift, and the main odx commands",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "getfluvo",
   "license": "MIT",
   "icon": "icon.png",

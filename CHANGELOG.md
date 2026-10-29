@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2
 
 - The first download of odx asks before reading PyPI; the progress shows its
   size.
